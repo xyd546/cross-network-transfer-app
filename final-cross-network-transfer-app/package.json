@@ -1,0 +1,19 @@
+{
+  "name": "cross-network-transfer-app",
+  "version": "2.0.0",
+  "description": "跨网络多设备实时同步网页：支持文字、图片、文件房间传递，适合 GitHub 管理与 Render 部署。",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "mime-types": "^2.1.35",
+    "multer": "^2.1.1",
+    "socket.io": "^4.8.1"
+  }
+}

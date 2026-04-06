@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>跨网传递 · Realtime Transfer</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-card">
+          <div class="brand-dot"></div>
+          <div>
+            <h1>跨网传递</h1>
+            <p>文字、图片、文件，跨网络实时同步</p>
+          </div>
+        </div>
+
+        <div class="card room-card">
+          <div class="card-title-row">
+            <h2>当前会话</h2>
+            <span id="connectionBadge" class="badge badge-wait">未连接</span>
+          </div>
+          <div class="info-grid">
+            <div>
+              <span class="label">房间号</span>
+              <strong id="roomDisplay">-</strong>
+            </div>
+            <div>
+              <span class="label">我的昵称</span>
+              <strong id="nicknameDisplay">-</strong>
+            </div>
+          </div>
+          <div class="stack-actions">
+            <button id="copyInviteBtn" class="ghost-btn">复制邀请链接</button>
+            <button id="rejoinBtn" class="ghost-btn">切换房间 / 用户</button>
+          </div>
+          <div id="inviteLinkBox" class="invite-box empty">进入房间后可一键复制邀请链接</div>
+        </div>
+
+        <div class="card user-card">
+          <div class="card-title-row">
+            <h2>在线用户</h2>
+            <span id="userCount" class="subtle">0</span>
+          </div>
+          <div id="userList" class="user-list empty-state-small">加入房间后显示</div>
+        </div>
+
+        <div class="card tips-card">
+          <h2>使用说明</h2>
+          <ul>
+            <li>部署成公网链接后，双方都只需打开同一个网址。</li>
+            <li>你可以复制“邀请链接”，对方点开就会自动带上房间信息。</li>
+            <li>支持发送文本、图片和文件，另一台电脑会实时看到。</li>
+            <li>图片可预览，文件可直接下载，文字可一键复制。</li>
+          </ul>
+        </div>
+      </aside>
+
+      <main class="main-panel">
+        <header class="chat-header">
+          <div>
+            <h2>实时消息</h2>
+            <p>适合你在不同电脑、不同网络之间快速传内容。</p>
+          </div>
+          <div class="header-actions">
+            <button id="clearComposerBtn" class="ghost-btn">清空输入</button>
+          </div>
+        </header>
+
+        <section id="dropZone" class="drop-zone hidden">
+          <div class="drop-zone-inner">
+            <strong>拖拽文件到这里即可上传</strong>
+            <span>支持图片预览与普通文件下载</span>
+          </div>
+        </section>
+
+        <section id="messageList" class="message-list">
+          <div class="empty-state">
+            <h3>还没有消息</h3>
+            <p>加入房间后，在这里实时查看文字、图片和文件。</p>
+          </div>
+        </section>
+
+        <section class="composer-card">
+          <div class="composer-top">
+            <textarea
+              id="messageInput"
+              placeholder="输入文字消息，按 Ctrl + Enter 发送"
+              maxlength="4000"
+            ></textarea>
+          </div>
+          <div class="composer-bottom">
+            <div class="left-actions">
+              <label class="file-btn">
+                选择文件
+                <input id="fileInput" type="file" />
+              </label>
+              <span id="fileNameHint" class="file-hint">未选择文件</span>
+            </div>
+            <div class="right-actions">
+              <button id="uploadBtn" class="secondary-btn">上传文件</button>
+              <button id="sendBtn" class="primary-btn">发送文字</button>
+            </div>
+          </div>
+          <div id="statusBar" class="status-bar">准备就绪</div>
+        </section>
+      </main>
+    </div>
+
+    <div id="joinModal" class="modal-overlay">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2>进入跨网房间</h2>
+          <p id="joinHelperText">不同网络的电脑，只要打开同一个网址并进入同一房间，就可以实时同步。</p>
+        </div>
+
+        <form id="joinForm" class="join-form">
+          <label>
+            昵称
+            <input id="nicknameInput" type="text" maxlength="32" placeholder="例如：办公室电脑" required />
+          </label>
+          <label>
+            房间号
+            <input id="roomInput" type="text" maxlength="64" placeholder="例如：linlong-transfer" required />
+          </label>
+          <label>
+            房间密码（可留空）
+            <input id="passwordInput" type="password" maxlength="64" placeholder="建议设置，避免别人误入" />
+          </label>
+          <button class="primary-btn modal-submit" type="submit">进入房间</button>
+        </form>
+      </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>
