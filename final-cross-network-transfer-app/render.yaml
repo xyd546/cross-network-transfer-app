@@ -12,6 +12,10 @@ services:
       mountPath: /opt/render/project/src/storage
       sizeGB: 1
     envVars:
+      - key: PORT
+        value: 10000
+      - key: NODE_ENV
+        value: production
       - key: STORAGE_ROOT
         value: /opt/render/project/src/storage
       - key: MAX_FILE_SIZE_MB

@@ -8,6 +8,17 @@ const multer = require('multer');
 const mime = require('mime-types');
 const { Server } = require('socket.io');
 
+// 全局错误处理，避免进程静默退出
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught Exception:', err.message);
+  console.error(err.stack);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 const PORT = Number(process.env.PORT || 3000);
 const APP_URL = process.env.APP_URL || '';
 const STORAGE_ROOT = process.env.STORAGE_ROOT || path.join(__dirname, 'storage');
