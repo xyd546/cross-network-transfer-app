@@ -2,6 +2,7 @@ services:
   - type: web
     name: cross-network-transfer-app
     runtime: node
+    nodeVersion: "20"
     plan: starter
     autoDeployTrigger: commit
     buildCommand: npm install

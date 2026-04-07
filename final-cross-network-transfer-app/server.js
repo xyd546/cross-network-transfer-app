@@ -8,6 +8,13 @@ const multer = require('multer');
 const mime = require('mime-types');
 const { Server } = require('socket.io');
 
+// ===== 启动诊断日志 =====
+console.log('[STARTUP] Node version:', process.version);
+console.log('[STARTUP] PORT:', process.env.PORT);
+console.log('[STARTUP] NODE_ENV:', process.env.NODE_ENV);
+console.log('[STARTUP] CWD:', process.cwd());
+console.log('[STARTUP] __dirname:', __dirname);
+
 // 全局错误处理，避免进程静默退出
 process.on('uncaughtException', (err) => {
   console.error('[FATAL] Uncaught Exception:', err.message);
@@ -19,9 +26,14 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('[FATAL] Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
+process.on('beforeExit', (code) => {
+  console.log('[INFO] Process beforeExit with code:', code);
+});
+
 const PORT = Number(process.env.PORT || 3000);
 const APP_URL = process.env.APP_URL || '';
 const STORAGE_ROOT = process.env.STORAGE_ROOT || path.join(__dirname, 'storage');
+console.log('[STARTUP] STORAGE_ROOT:', STORAGE_ROOT);
 const DATA_DIR = path.join(STORAGE_ROOT, 'data');
 const UPLOAD_DIR = path.join(STORAGE_ROOT, 'uploads');
 const ROOMS_FILE = path.join(DATA_DIR, 'rooms.json');
