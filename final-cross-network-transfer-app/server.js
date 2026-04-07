@@ -378,7 +378,7 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-server.listen(PORT, () => {
-  console.log(`Cross-network transfer app is running on http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Cross-network transfer app is running on http://0.0.0.0:${PORT}`);
   console.log(`Persistent storage root: ${STORAGE_ROOT}`);
 });
