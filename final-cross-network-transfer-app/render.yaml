@@ -25,3 +25,5 @@ services:
         value: 200
       - key: MESSAGE_RETENTION_COUNT
         value: 5000
+      - key: MAX_TEXT_LENGTH
+        value: 20000

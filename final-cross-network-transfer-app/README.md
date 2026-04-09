@@ -18,6 +18,9 @@
 - 支持 GitHub 版本管理
 - 支持 Render 云部署
 - 支持持久化磁盘保存历史消息与上传文件
+- **剪贴板粘贴**：支持 Ctrl+V / Cmd+V 直接粘贴图片或文字
+- **快捷发送**：支持 Ctrl+Enter / Cmd+Enter 发送消息
+- **可配置文字长度**：通过 MAX_TEXT_LENGTH 环境变量控制（默认 20000 字符）
 
 ---
 
@@ -79,6 +82,7 @@ STORAGE_ROOT=./storage
 MAX_FILE_SIZE_MB=50
 MAX_HISTORY_PER_ROOM=200
 MESSAGE_RETENTION_COUNT=5000
+MAX_TEXT_LENGTH=20000
 ```
 
 ### 字段说明
@@ -89,6 +93,20 @@ MESSAGE_RETENTION_COUNT=5000
 - `MAX_FILE_SIZE_MB`：单文件上传大小限制
 - `MAX_HISTORY_PER_ROOM`：单房间读取的历史消息条数
 - `MESSAGE_RETENTION_COUNT`：全局总消息保留上限
+- `MAX_TEXT_LENGTH`：单条文字消息的最大字符数（默认 20000）
+
+### 本地测试步骤
+
+1. 安装依赖：`npm install`
+2. 启动服务：`npm start`
+3. 浏览器打开 `http://localhost:3000`
+4. 测试场景：
+   - 正常发送短文字
+   - 发送接近 20000 字符的长文字
+   - 发送超过 20000 字符的文字（应被阻止）
+   - Ctrl+V 粘贴图片
+   - Ctrl+V 粘贴文字（在非输入框区域）
+   - Ctrl+Enter / Cmd+Enter 发送
 
 ---
 

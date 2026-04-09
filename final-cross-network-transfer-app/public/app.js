@@ -1,5 +1,8 @@
 const socket = io();
 
+// 可配置的最大文字长度（与服务端 MAX_TEXT_LENGTH 保持一致）
+const MAX_TEXT_LENGTH = 20000;
+
 const state = {
   roomId: '',
   nickname: '',
@@ -25,6 +28,7 @@ const els = {
   connectionBadge: document.getElementById('connectionBadge'),
   messageList: document.getElementById('messageList'),
   messageInput: document.getElementById('messageInput'),
+  charCount: document.getElementById('charCount'),
   sendBtn: document.getElementById('sendBtn'),
   clearComposerBtn: document.getElementById('clearComposerBtn'),
   fileInput: document.getElementById('fileInput'),
@@ -117,10 +121,10 @@ function formatBytes(bytes = 0) {
 
 function escapeHtml(str = '') {
   return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+    .replace(/&/g, '&')
+    .replace(/</g, '<')
+    .replace(/>/g, '>')
+    .replace(/"/g, '"')
     .replace(/'/g, '&#039;');
 }
 
@@ -279,14 +283,36 @@ function leaveRoom() {
   });
 }
 
+function updateCharCount() {
+  const length = els.messageInput.value.length;
+  els.charCount.textContent = `${length} / ${MAX_TEXT_LENGTH}`;
+  if (length > MAX_TEXT_LENGTH) {
+    els.charCount.classList.add('char-overflow');
+    els.sendBtn.disabled = true;
+  } else if (length > MAX_TEXT_LENGTH * 0.9) {
+    els.charCount.classList.add('char-warning');
+    els.charCount.classList.remove('char-overflow');
+    els.sendBtn.disabled = false;
+  } else {
+    els.charCount.classList.remove('char-warning', 'char-overflow');
+    els.sendBtn.disabled = false;
+  }
+}
+
 async function sendTextMessage() {
-  const text = els.messageInput.value.trim();
-  if (!text) {
+  const text = els.messageInput.value;
+  const trimmedText = text.trim();
+  
+  if (!trimmedText) {
     setStatus('请输入要发送的文字', 'error');
     return;
   }
   if (!state.joined) {
     setStatus('请先加入房间', 'error');
+    return;
+  }
+  if (trimmedText.length > MAX_TEXT_LENGTH) {
+    setStatus(`文字超过上限，当前最多 ${MAX_TEXT_LENGTH} 个字符`, 'error');
     return;
   }
 
@@ -297,6 +323,7 @@ async function sendTextMessage() {
       return;
     }
     els.messageInput.value = '';
+    updateCharCount();
     setStatus('文字已发送', 'success');
   });
 }
@@ -368,19 +395,24 @@ async function performJoinFromForm(options = {}) {
   return true;
 }
 
+// ===== 事件绑定 =====
+
 els.joinForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   await performJoinFromForm();
 });
 
 els.sendBtn.addEventListener('click', sendTextMessage);
+
 els.clearComposerBtn.addEventListener('click', () => {
   els.messageInput.value = '';
   els.fileInput.value = '';
   state.selectedFile = null;
   els.fileNameHint.textContent = '未选择文件';
+  updateCharCount();
   setStatus('输入区已清空');
 });
+
 els.rejoinBtn.addEventListener('click', async () => {
   if (state.joined) {
     await leaveRoom();
@@ -393,6 +425,7 @@ els.rejoinBtn.addEventListener('click', async () => {
   setJoinedUI(false);
   setStatus('你已退出当前房间');
 });
+
 els.copyInviteBtn.addEventListener('click', () => {
   if (!state.joined || !state.roomId) {
     setStatus('请先进入房间后再复制邀请链接', 'error');
@@ -400,24 +433,90 @@ els.copyInviteBtn.addEventListener('click', () => {
   }
   copyText(buildInviteUrl(state.roomId, state.password));
 });
+
 els.messageInput.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter' && event.ctrlKey) {
+  // Ctrl+Enter 或 Cmd+Enter 发送
+  if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
     event.preventDefault();
     sendTextMessage();
   }
 });
+
+// 字数统计
+els.messageInput.addEventListener('input', updateCharCount);
+
 els.fileInput.addEventListener('change', (event) => {
   state.selectedFile = event.target.files?.[0] || null;
   els.fileNameHint.textContent = state.selectedFile ? state.selectedFile.name : '未选择文件';
 });
+
 els.uploadBtn.addEventListener('click', () => uploadSelectedFile(state.selectedFile));
 
+// ===== 剪贴板粘贴支持 =====
+document.addEventListener('paste', async (event) => {
+  const clipboardData = event.clipboardData || window.clipboardData;
+  if (!clipboardData) return;
+
+  // 检查焦点是否在允许默认粘贴的输入框中
+  const activeElement = document.activeElement;
+  const isInMessageInput = activeElement === els.messageInput;
+  const isInNicknameInput = activeElement === els.nicknameInput;
+  const isInRoomInput = activeElement === els.roomInput;
+  const isInPasswordInput = activeElement === els.passwordInput;
+  
+  // 如果焦点在允许默认粘贴的输入框中，让浏览器处理
+  if (isInMessageInput || isInNicknameInput || isInRoomInput || isInPasswordInput) {
+    return;
+  }
+
+  // 如果没有加入房间，不处理
+  if (!state.joined) {
+    return;
+  }
+
+  // 检查是否有图片
+  const items = clipboardData.items;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].type.startsWith('image/')) {
+      event.preventDefault();
+      const imageItem = items[i];
+      const blob = imageItem.getAsFile();
+      
+      if (blob) {
+        // 生成文件名
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `pasted-image-${timestamp}.png`;
+        
+        // 创建文件对象
+        const file = new File([blob], filename, { type: blob.type || 'image/png' });
+        
+        setStatus('已检测到剪贴板图片，正在上传...', 'normal');
+        await uploadSelectedFile(file);
+      }
+      return;
+    }
+  }
+
+  // 检查是否有纯文字
+  const text = clipboardData.getData('text/plain') || clipboardData.getData('text');
+  if (text) {
+    event.preventDefault();
+    // 将文字填入消息输入框
+    els.messageInput.value = text;
+    els.messageInput.focus();
+    updateCharCount();
+    setStatus('已将剪贴板文字填入输入框', 'success');
+  }
+});
+
+// 拖拽支持
 ['dragenter', 'dragover'].forEach((eventName) => {
   window.addEventListener(eventName, (event) => {
     event.preventDefault();
     els.dropZone.classList.remove('hidden');
   });
 });
+
 ['dragleave', 'drop'].forEach((eventName) => {
   window.addEventListener(eventName, (event) => {
     event.preventDefault();
@@ -433,6 +532,7 @@ els.uploadBtn.addEventListener('click', () => uploadSelectedFile(state.selectedF
   });
 });
 
+// ===== Socket.IO 事件 =====
 socket.on('connect', async () => {
   if (state.joined) {
     els.connectionBadge.textContent = '已连接';
@@ -467,6 +567,7 @@ socket.on('room:users', (users) => {
   renderUsers(users || []);
 });
 
+// ===== 初始化 =====
 async function bootstrap() {
   loadSession();
   if (!els.nicknameInput.value.trim()) {
@@ -474,7 +575,8 @@ async function bootstrap() {
   }
   resetMessageList();
   setJoinedUI(false);
-  setStatus('准备就绪');
+  updateCharCount();
+  setStatus('准备就绪，支持 Ctrl+V 粘贴图片或文字');
 
   const hasInvite = applyInviteHashToForm();
   if (hasInvite) {

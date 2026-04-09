@@ -41,6 +41,7 @@ const MESSAGES_FILE = path.join(DATA_DIR, 'messages.json');
 const MAX_FILE_SIZE_MB = Number(process.env.MAX_FILE_SIZE_MB || 50);
 const MAX_HISTORY_PER_ROOM = Number(process.env.MAX_HISTORY_PER_ROOM || 200);
 const MESSAGE_RETENTION_COUNT = Number(process.env.MESSAGE_RETENTION_COUNT || 5000);
+const MAX_TEXT_LENGTH = Number(process.env.MAX_TEXT_LENGTH || 20000);
 
 for (const dir of [STORAGE_ROOT, DATA_DIR, UPLOAD_DIR]) {
   if (!fs.existsSync(dir)) {
@@ -95,7 +96,7 @@ function normalizeNickname(value = '') {
 }
 
 function normalizeText(value = '') {
-  return String(value).trim().slice(0, 4000);
+  return String(value ?? '');
 }
 
 function sha256(value = '') {
@@ -371,18 +372,22 @@ io.on('connection', (socket) => {
       const roomId = socket.data.roomId;
       const nickname = socket.data.nickname;
       const text = normalizeText(payload?.text);
+      const trimmedText = text.trim();
 
       if (!roomId || !nickname) {
         throw new Error('你还没有加入房间');
       }
-      if (!text) {
+      if (!trimmedText) {
         throw new Error('消息内容不能为空');
+      }
+      if (trimmedText.length > MAX_TEXT_LENGTH) {
+        throw new Error(`文字超过上限，当前最多 ${MAX_TEXT_LENGTH} 个字符`);
       }
 
       const message = {
         ...createMessageBase({ roomId, sender: { nickname } }),
         type: 'text',
-        text
+        text: trimmedText
       };
       await addMessage(message);
       io.to(roomId).emit('message:new', message);

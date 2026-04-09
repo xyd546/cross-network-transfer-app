@@ -51,9 +51,11 @@
           <h2>使用说明</h2>
           <ul>
             <li>部署成公网链接后，双方都只需打开同一个网址。</li>
-            <li>你可以复制“邀请链接”，对方点开就会自动带上房间信息。</li>
+            <li>你可以复制"邀请链接"，对方点开就会自动带上房间信息。</li>
             <li>支持发送文本、图片和文件，另一台电脑会实时看到。</li>
             <li>图片可预览，文件可直接下载，文字可一键复制。</li>
+            <li>支持 <strong>Ctrl+V / Cmd+V</strong> 粘贴图片或文字到输入框。</li>
+            <li>支持 <strong>Ctrl+Enter / Cmd+Enter</strong> 快捷发送。</li>
           </ul>
         </div>
       </aside>
@@ -87,9 +89,12 @@
           <div class="composer-top">
             <textarea
               id="messageInput"
-              placeholder="输入文字消息，按 Ctrl + Enter 发送"
-              maxlength="4000"
+              placeholder="输入文字消息，支持 Ctrl+V 粘贴图片或文字"
+              maxlength="20000"
             ></textarea>
+            <div class="composer-footer">
+              <span id="charCount" class="char-count">0 / 20000</span>
+            </div>
           </div>
           <div class="composer-bottom">
             <div class="left-actions">
