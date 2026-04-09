@@ -6,6 +6,7 @@ const fsp = require('fs/promises');
 const crypto = require('crypto');
 const multer = require('multer');
 const mime = require('mime-types');
+const archiver = require('archiver');
 const { Server } = require('socket.io');
 
 // ===== 启动诊断日志 =====
@@ -263,9 +264,12 @@ const upload = multer({
   storage,
   limits: {
     fileSize: MAX_FILE_SIZE_MB * 1024 * 1024,
-    files: 1
+    files: 20  // 最多支持20个文件同时上传
   }
 });
+
+// 多文件上传处理器
+const uploadMiddleware = upload.array('files', 20);
 
 const onlineUsersByRoom = new Map();
 
@@ -360,6 +364,157 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     res.json({ ok: true, message });
   } catch (error) {
     res.status(400).json({ ok: false, message: error.message || '上传失败' });
+  }
+});
+
+/**
+ * 多文件上传接口
+ * 支持一次上传多个文件，每个文件生成独立消息
+ */
+app.post('/api/upload/multiple', uploadMiddleware, async (req, res) => {
+  try {
+    const roomId = normalizeRoomId(req.body.roomId);
+    const nickname = normalizeNickname(req.body.nickname);
+    const password = String(req.body.password || '');
+
+    if (!roomId) {
+      return res.status(400).json({ ok: false, message: '缺少房间号' });
+    }
+    if (!nickname) {
+      return res.status(400).json({ ok: false, message: '缺少昵称' });
+    }
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ ok: false, message: '没有上传文件' });
+    }
+
+    await ensureRoom(roomId, password);
+
+    const results = { success: [], failed: [] };
+
+    for (const file of req.files) {
+      try {
+        const decodedOriginalName = decodeUploadedFilename(file.originalname);
+        const isImage = /^image\//.test(file.mimetype);
+        const message = {
+          ...createMessageBase({ roomId, sender: { nickname } }),
+          type: isImage ? 'image' : 'file',
+          file: {
+            originalName: decodedOriginalName,
+            storedName: file.filename,
+            mimeType: file.mimetype,
+            size: file.size,
+            url: getPublicFileUrl(file.filename)
+          }
+        };
+        await addMessage(message);
+        io.to(roomId).emit('message:new', message);
+        results.success.push(message);
+      } catch (err) {
+        results.failed.push({ filename: file.originalname, error: err.message });
+      }
+    }
+
+    res.json({
+      ok: true,
+      total: req.files.length,
+      successCount: results.success.length,
+      failedCount: results.failed.length,
+      messages: results.success,
+      failed: results.failed
+    });
+  } catch (error) {
+    res.status(400).json({ ok: false, message: error.message || '上传失败' });
+  }
+});
+
+/**
+ * 批量下载接口
+ * 将多个文件打包成zip下载
+ */
+app.post('/api/files/batch-download', async (req, res) => {
+  try {
+    const { storedNames } = req.body;
+
+    if (!storedNames || !Array.isArray(storedNames) || storedNames.length === 0) {
+      return res.status(400).json({ ok: false, message: '请提供要下载的文件列表' });
+    }
+
+    // 限制批量下载的文件数量
+    if (storedNames.length > 50) {
+      return res.status(400).json({ ok: false, message: '一次最多下载50个文件' });
+    }
+
+    // 收集文件信息
+    const filesToAdd = [];
+    const missingFiles = [];
+
+    for (const storedName of storedNames) {
+      // 安全检查
+      if (!/^[\w.\-()]+$/.test(storedName)) {
+        missingFiles.push({ storedName, error: '无效的文件名' });
+        continue;
+      }
+
+      const filePath = path.join(UPLOAD_DIR, storedName);
+      if (!fs.existsSync(filePath)) {
+        missingFiles.push({ storedName, error: '文件不存在' });
+        continue;
+      }
+
+      // 获取原始文件名
+      const fileMessage = await findFileMessageByStoredName(storedName);
+      const originalName = fileMessage?.file?.originalName || storedName;
+
+      filesToAdd.push({
+        storedName,
+        originalName,
+        filePath
+      });
+    }
+
+    if (filesToAdd.length === 0) {
+      return res.status(400).json({
+        ok: false,
+        message: '没有可下载的文件',
+        missingFiles
+      });
+    }
+
+    // 生成zip文件名
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const zipFilename = `批量下载_${timestamp}.zip`;
+
+    // 设置响应头
+    const safeAsciiName = zipFilename.replace(/[^\x00-\x7F]/g, '_').replace(/["\\]/g, '_');
+    const encodedName = encodeURIComponent(zipFilename).replace(/['()]/g, char => `%${char.charCodeAt(0).toString(16)}`);
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition',
+      `attachment; filename="${safeAsciiName}"; filename*=UTF-8''${encodedName}`
+    );
+    res.setHeader('Cache-Control', 'private, no-cache');
+
+    // 创建zip归档
+    const archive = archiver('zip', { zlib: { level: 9 } });
+
+    archive.on('error', (err) => {
+      console.error('[BATCH DOWNLOAD ERROR]', err);
+      if (!res.headersSent) {
+        res.status(500).json({ ok: false, message: '打包文件时出错' });
+      }
+    });
+
+    archive.pipe(res);
+
+    // 添加文件到zip
+    for (const fileInfo of filesToAdd) {
+      archive.file(fileInfo.filePath, { name: fileInfo.originalName });
+    }
+
+    archive.finalize();
+  } catch (error) {
+    console.error('[BATCH DOWNLOAD ERROR]', error);
+    res.status(500).json({ ok: false, message: '批量下载失败' });
   }
 });
 

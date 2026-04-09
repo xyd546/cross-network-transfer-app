@@ -22,6 +22,8 @@
 - **快捷发送**：支持 Ctrl+Enter / Cmd+Enter 发送消息
 - **可配置文字长度**：通过 MAX_TEXT_LENGTH 环境变量控制（默认 20000 字符）
 - **中文文件名支持**：上传和下载中文文件名时会自动处理编码问题，支持 UTF-8 中文文件名
+- **多文件上传**：支持一次选择/拖拽多个文件上传
+- **批量下载**：勾选多个文件后，可一键打包下载为 zip
 
 ---
 
@@ -110,10 +112,38 @@ MAX_TEXT_LENGTH=20000
    - Ctrl+Enter / Cmd+Enter 发送
    - **上传中文文件名文件**（如：测试文档_中文名.zip）
    - **下载中文文件名文件**，验证保存文件名是否正确
+   - **多文件上传**：一次选择多个文件上传
+   - **批量下载**：勾选多个文件后点击"批量下载"按钮
 
 ---
 
-## 5. 推荐 GitHub 工作流
+## 5. API 接口说明
+
+### 5.1 单文件上传
+- `POST /api/upload`
+- 兼容旧版单文件上传
+
+### 5.2 多文件上传
+- `POST /api/upload/multiple`
+- 一次上传多个文件，每个文件生成独立消息
+- 返回：`{ ok, total, successCount, failedCount, messages, failed }`
+
+### 5.3 单文件下载
+- `GET /api/files/:storedName/download`
+- 支持中文文件名，使用 RFC 5987 `filename*` 编码
+
+### 5.4 批量下载
+- `POST /api/files/batch-download`
+- 请求体：`{ storedNames: ["name1", "name2", ...] }`
+- 返回：zip 压缩包，内含所有选中的文件，文件名保持原始中文名
+- 限制：一次最多下载 50 个文件
+
+### 5.5 健康检查
+- `GET /api/health`
+
+---
+
+## 6. 推荐 GitHub 工作流
 
 ### 初次上传
 
@@ -147,7 +177,7 @@ git push --set-upstream origin feature/your-feature-name
 
 ---
 
-## 6. Render 部署建议
+## 7. Render 部署建议
 
 ### 先做测试版
 
@@ -166,7 +196,7 @@ git push --set-upstream origin feature/your-feature-name
 
 ---
 
-## 7. 当前默认安全处理
+## 8. 当前默认安全处理
 
 这个项目没有把安全做得特别重，但已经做了适合当前阶段的默认控制：
 
@@ -182,19 +212,19 @@ git push --set-upstream origin feature/your-feature-name
 
 ---
 
-## 8. 你接下来最推荐的动作
+## 9. 你接下来最推荐的动作
 
 1. 先本地启动一次
 2. 确认文字/图片/文件都正常
-3. 推到 GitHub 私有仓库
-4. 在 Render 上按 `docs/02-Render部署清单.md` 部署
-5. 部署后用两台不同网络电脑实测
+3. 测试多文件上传和批量下载
+4. 推到 GitHub 私有仓库
+5. 在 Render 上按 `docs/02-Render部署清单.md` 部署
+6. 部署后用两台不同网络电脑实测
 
 ---
 
-## 9. 文档入口
+## 10. 文档入口
 
 - `docs/01-GitHub版本管理清单.md`
 - `docs/02-Render部署清单.md`
 - `docs/03-上线验收清单.md`
-

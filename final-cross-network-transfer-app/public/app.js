@@ -8,7 +8,8 @@ const state = {
   nickname: '',
   password: '',
   joined: false,
-  selectedFile: null,
+  selectedFiles: [],  // 改为数组，支持多文件
+  selectedMessages: new Set(),  // 批量下载选中的消息ID
   inviteHashLoaded: false,
   joining: false
 };
@@ -34,6 +35,9 @@ const els = {
   fileInput: document.getElementById('fileInput'),
   fileNameHint: document.getElementById('fileNameHint'),
   uploadBtn: document.getElementById('uploadBtn'),
+  batchDownloadBtn: document.getElementById('batchDownloadBtn'),
+  clearSelectionBtn: document.getElementById('clearSelectionBtn'),
+  selectionCount: document.getElementById('selectionCount'),
   statusBar: document.getElementById('statusBar'),
   userList: document.getElementById('userList'),
   userCount: document.getElementById('userCount'),
@@ -179,6 +183,25 @@ function refreshInviteBox() {
   els.inviteLinkBox.classList.remove('empty');
 }
 
+function updateFileHint() {
+  if (state.selectedFiles.length === 0) {
+    els.fileNameHint.textContent = '未选择文件';
+  } else if (state.selectedFiles.length === 1) {
+    els.fileNameHint.textContent = state.selectedFiles[0].name;
+  } else {
+    const names = state.selectedFiles.slice(0, 3).map(f => f.name).join(', ');
+    const more = state.selectedFiles.length > 3 ? `...等${state.selectedFiles.length}个文件` : '';
+    els.fileNameHint.textContent = `${names}${more}`;
+  }
+}
+
+function updateSelectionCount() {
+  const count = state.selectedMessages.size;
+  els.selectionCount.textContent = `已选择 ${count} 个文件`;
+  els.batchDownloadBtn.disabled = count === 0;
+  els.clearSelectionBtn.classList.toggle('hidden', count === 0);
+}
+
 function createTextMessageNode(message) {
   const isSelf = message.sender?.nickname === state.nickname;
   const wrapper = document.createElement('div');
@@ -227,8 +250,10 @@ function fixDisplayFilename(filename) {
 
 function createFileMessageNode(message) {
   const isSelf = message.sender?.nickname === state.nickname;
+  const isSelected = state.selectedMessages.has(message.id);
   const wrapper = document.createElement('div');
   wrapper.className = `message-row ${isSelf ? 'self' : 'other'}`;
+  wrapper.dataset.messageId = message.id;
 
   const isImage = message.type === 'image';
   // 修复文件名显示（兼容历史乱码）
@@ -251,11 +276,23 @@ function createFileMessageNode(message) {
         </div>
       </div>
       <div class="message-actions">
+        <input type="checkbox" class="file-checkbox" data-id="${message.id}" ${isSelected ? 'checked' : ''} />
         <a class="mini-btn" href="/api/files/${encodeURIComponent(message.file.storedName)}/download" download="${escapeHtml(displayName)}">下载</a>
         <button class="mini-btn copy-link-btn">复制链接</button>
       </div>
     </div>
   `;
+
+  // 文件选择事件
+  const checkbox = wrapper.querySelector('.file-checkbox');
+  checkbox.addEventListener('change', (e) => {
+    if (e.target.checked) {
+      state.selectedMessages.add(message.id);
+    } else {
+      state.selectedMessages.delete(message.id);
+    }
+    updateSelectionCount();
+  });
 
   // 复制链接改为复制新的下载链接
   wrapper.querySelector('.copy-link-btn').addEventListener('click', () => {
@@ -360,9 +397,9 @@ async function sendTextMessage() {
   });
 }
 
-async function uploadSelectedFile(file) {
-  if (!file) {
-    setStatus('请先选择一个文件', 'error');
+async function uploadSelectedFiles(files) {
+  if (!files || files.length === 0) {
+    setStatus('请先选择文件', 'error');
     return;
   }
   if (!state.joined) {
@@ -374,27 +411,115 @@ async function uploadSelectedFile(file) {
   formData.append('roomId', state.roomId);
   formData.append('nickname', state.nickname);
   formData.append('password', state.password);
-  formData.append('file', file);
+  
+  // 添加多个文件
+  for (const file of files) {
+    formData.append('files', file);
+  }
 
-  setStatus(`正在上传 ${file.name} ...`);
+  const total = files.length;
+  if (total === 1) {
+    setStatus(`正在上传 ${files[0].name} ...`);
+  } else {
+    setStatus(`正在上传 ${total} 个文件...`);
+  }
 
   try {
-    const response = await fetch('/api/upload', {
+    const response = await fetch('/api/upload/multiple', {
       method: 'POST',
       body: formData
     });
     const result = await response.json();
+    
     if (!response.ok || !result.ok) {
       throw new Error(result.message || '上传失败');
     }
 
     els.fileInput.value = '';
-    state.selectedFile = null;
-    els.fileNameHint.textContent = '未选择文件';
-    setStatus('文件上传成功，已实时同步', 'success');
+    state.selectedFiles = [];
+    updateFileHint();
+    
+    const { successCount, failedCount } = result;
+    if (failedCount > 0) {
+      setStatus(`${total} 个文件上传完成，成功 ${successCount}，失败 ${failedCount}`, 'error');
+    } else {
+      setStatus(`${total} 个文件上传完成，成功 ${successCount}`, 'success');
+    }
   } catch (error) {
     setStatus(error.message || '上传失败', 'error');
   }
+}
+
+async function batchDownloadFiles() {
+  if (state.selectedMessages.size === 0) {
+    setStatus('请先选择要下载的文件', 'error');
+    return;
+  }
+
+  setStatus('正在准备批量下载...');
+
+  try {
+    // 获取所有选中的消息对应的 storedName
+    const messageNodes = els.messageList.querySelectorAll('.message-row');
+    const storedNames = [];
+
+    for (const node of messageNodes) {
+      const msgId = node.dataset.messageId;
+      if (state.selectedMessages.has(msgId)) {
+        const checkbox = node.querySelector('.file-checkbox');
+        if (checkbox) {
+          storedNames.push(checkbox.dataset.id.replace(/^message_/, ''));
+        }
+      }
+    }
+
+    // 从 DOM 中重新获取 storedName
+    const selectedStoredNames = [];
+    const checkboxes = els.messageList.querySelectorAll('.file-checkbox:checked');
+    checkboxes.forEach(checkbox => {
+      const messageId = checkbox.dataset.id;
+      // 找到对应的消息卡片
+      const row = checkbox.closest('.message-row');
+      const downloadLink = row.querySelector('a[href*="/api/files/"]');
+      if (downloadLink) {
+        const match = downloadLink.href.match(/\/api\/files\/([^/]+)\/download/);
+        if (match) {
+          selectedStoredNames.push(match[1]);
+        }
+      }
+    });
+
+    if (selectedStoredNames.length === 0) {
+      setStatus('没有找到可下载的文件', 'error');
+      return;
+    }
+
+    // 创建表单提交批量下载请求
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/api/files/batch-download';
+    form.style.display = 'none';
+
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'storedNames';
+    input.value = JSON.stringify(selectedStoredNames);
+    form.appendChild(input);
+
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+
+    setStatus(`已发起 ${selectedStoredNames.length} 个文件的批量下载`, 'success');
+  } catch (error) {
+    setStatus('批量下载失败', 'error');
+  }
+}
+
+function clearFileSelection() {
+  state.selectedMessages.clear();
+  els.messageList.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = false);
+  updateSelectionCount();
 }
 
 async function performJoinFromForm(options = {}) {
@@ -419,9 +544,11 @@ async function performJoinFromForm(options = {}) {
   location.hash = new URLSearchParams({ room: state.roomId, ...(state.password ? { password: state.password } : {}) }).toString();
 
   resetMessageList();
+  state.selectedMessages.clear();
   (result.history || []).forEach(addMessageToView);
   renderUsers(result.users || []);
   setJoinedUI(true);
+  updateSelectionCount();
   state.joining = false;
   if (!silent) setStatus('已成功进入房间', 'success');
   return true;
@@ -439,8 +566,8 @@ els.sendBtn.addEventListener('click', sendTextMessage);
 els.clearComposerBtn.addEventListener('click', () => {
   els.messageInput.value = '';
   els.fileInput.value = '';
-  state.selectedFile = null;
-  els.fileNameHint.textContent = '未选择文件';
+  state.selectedFiles = [];
+  updateFileHint();
   updateCharCount();
   setStatus('输入区已清空');
 });
@@ -452,6 +579,7 @@ els.rejoinBtn.addEventListener('click', async () => {
   state.joined = false;
   state.roomId = '';
   state.password = '';
+  state.selectedMessages.clear();
   resetMessageList();
   renderUsers([]);
   setJoinedUI(false);
@@ -478,11 +606,16 @@ els.messageInput.addEventListener('keydown', (event) => {
 els.messageInput.addEventListener('input', updateCharCount);
 
 els.fileInput.addEventListener('change', (event) => {
-  state.selectedFile = event.target.files?.[0] || null;
-  els.fileNameHint.textContent = state.selectedFile ? state.selectedFile.name : '未选择文件';
+  // 支持多文件选择
+  state.selectedFiles = Array.from(event.target.files || []);
+  updateFileHint();
 });
 
-els.uploadBtn.addEventListener('click', () => uploadSelectedFile(state.selectedFile));
+els.uploadBtn.addEventListener('click', () => uploadSelectedFiles(state.selectedFiles));
+
+els.batchDownloadBtn.addEventListener('click', batchDownloadFiles);
+
+els.clearSelectionBtn.addEventListener('click', clearFileSelection);
 
 // ===== 剪贴板粘贴支持 =====
 document.addEventListener('paste', async (event) => {
@@ -523,7 +656,8 @@ document.addEventListener('paste', async (event) => {
         const file = new File([blob], filename, { type: blob.type || 'image/png' });
         
         setStatus('已检测到剪贴板图片，正在上传...', 'normal');
-        await uploadSelectedFile(file);
+        // 单个图片上传，包装成数组
+        await uploadSelectedFiles([file]);
       }
       return;
     }
@@ -553,11 +687,13 @@ document.addEventListener('paste', async (event) => {
   window.addEventListener(eventName, (event) => {
     event.preventDefault();
     if (eventName === 'drop') {
-      const file = event.dataTransfer?.files?.[0];
-      if (file) {
-        state.selectedFile = file;
-        els.fileNameHint.textContent = file.name;
-        uploadSelectedFile(file);
+      const files = event.dataTransfer?.files;
+      if (files && files.length > 0) {
+        // 支持多文件拖拽
+        state.selectedFiles = Array.from(files);
+        updateFileHint();
+        // 拖拽时直接上传
+        uploadSelectedFiles(state.selectedFiles);
       }
     }
     els.dropZone.classList.add('hidden');
@@ -608,6 +744,8 @@ async function bootstrap() {
   resetMessageList();
   setJoinedUI(false);
   updateCharCount();
+  updateFileHint();
+  updateSelectionCount();
   setStatus('准备就绪，支持 Ctrl+V 粘贴图片或文字');
 
   const hasInvite = applyInviteHashToForm();

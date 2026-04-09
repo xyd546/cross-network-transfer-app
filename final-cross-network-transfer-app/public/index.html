@@ -56,6 +56,8 @@
             <li>图片可预览，文件可直接下载，文字可一键复制。</li>
             <li>支持 <strong>Ctrl+V / Cmd+V</strong> 粘贴图片或文字到输入框。</li>
             <li>支持 <strong>Ctrl+Enter / Cmd+Enter</strong> 快捷发送。</li>
+            <li>支持 <strong>多文件上传</strong>，一次可选择多个文件。</li>
+            <li>支持 <strong>批量下载</strong>，勾选多个文件后一键打包下载。</li>
           </ul>
         </div>
       </aside>
@@ -67,14 +69,20 @@
             <p>适合你在不同电脑、不同网络之间快速传内容。</p>
           </div>
           <div class="header-actions">
+            <button id="clearSelectionBtn" class="ghost-btn hidden">清空选择</button>
+            <button id="batchDownloadBtn" class="secondary-btn" disabled>批量下载</button>
             <button id="clearComposerBtn" class="ghost-btn">清空输入</button>
           </div>
         </header>
 
+        <div class="selection-bar">
+          <span id="selectionCount">已选择 0 个文件</span>
+        </div>
+
         <section id="dropZone" class="drop-zone hidden">
           <div class="drop-zone-inner">
             <strong>拖拽文件到这里即可上传</strong>
-            <span>支持图片预览与普通文件下载</span>
+            <span>支持多文件拖拽，图片自动预览</span>
           </div>
         </section>
 
@@ -100,7 +108,7 @@
             <div class="left-actions">
               <label class="file-btn">
                 选择文件
-                <input id="fileInput" type="file" />
+                <input id="fileInput" type="file" multiple />
               </label>
               <span id="fileNameHint" class="file-hint">未选择文件</span>
             </div>
