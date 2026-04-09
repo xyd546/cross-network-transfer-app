@@ -189,10 +189,71 @@ function getPublicFileUrl(filename) {
   return `${APP_URL.replace(/\/$/, '')}${relativeUrl}`;
 }
 
+/**
+ * 修复中文文件名乱码问题
+ * 问题根因：某些HTTP客户端或中间件可能将UTF-8编码的中文文件名错误地按Latin-1解读
+ * 这里尝试用Buffer将Latin-1误读的内容转回UTF-8来恢复原始中文
+ */
+function decodeUploadedFilename(name) {
+  if (!name) return 'file';
+  
+  const original = String(name);
+  
+  // 如果原字符串本身已包含有效中文字符，保持原样
+  if (/[\u4e00-\u9fa5]/.test(original)) {
+    return original;
+  }
+  
+  // 尝试用 Latin-1 -> UTF-8 的反向解码来修复乱码
+  let decoded = original;
+  try {
+    decoded = Buffer.from(original, 'latin1').toString('utf8');
+  } catch (e) {
+    // 解码失败，保持原值
+  }
+  
+  // 判断是否应该使用解码后的结果：
+  // 1. 解码后的字符串包含有效的中文字符
+  // 2. 原字符串看起来像乱码（不包含中文但解码后变出了中文）
+  const hasChinese = /[\u4e00-\u9fa5]/.test(decoded);
+  const wasDecoded = decoded !== original;
+  
+  // 如果解码后包含中文，且原字符串看起来像乱码，使用解码结果
+  if (hasChinese && wasDecoded) {
+    // 进一步验证：检查原字符串是否包含典型的乱码特征字符
+    const hasGarbageChars = /[ÃÅÄÆÈÉËÏ]/.test(original);
+    if (hasGarbageChars || !/[\u4e00-\u9fa5]/.test(original)) {
+      console.log('[FILENAME] Decoded garbled filename:', original, '->', decoded);
+      return decoded;
+    }
+  }
+  
+  return original;
+}
+
+/**
+ * 生成安全的文件名（用于存储），去除不安全字符
+ */
+function makeSafeFilename(name) {
+  const decoded = decodeUploadedFilename(name);
+  return String(decoded || 'file')
+    .replace(/[\/\\:*?"<>|]/g, '_')
+    .replace(/\s+/g, '_')
+    .slice(0, 200);
+}
+
+/**
+ * 获取文件消息（通过 storedName 在历史消息中查找）
+ */
+async function findFileMessageByStoredName(storedName) {
+  const messages = await getMessages();
+  return messages.find(m => m.file && m.file.storedName === storedName);
+}
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
   filename: (_req, file, cb) => {
-    const safeOriginal = String(file.originalname || 'file').replace(/[^\w.\-()一-龥]/g, '_');
+    const safeOriginal = makeSafeFilename(file.originalname);
     const uniqueName = `${Date.now()}_${crypto.randomBytes(4).toString('hex')}_${safeOriginal}`;
     cb(null, uniqueName);
   }
@@ -277,12 +338,15 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
     await ensureRoom(roomId, password);
 
+    // 修复文件名：使用解码后的原始文件名
+    const decodedOriginalName = decodeUploadedFilename(req.file.originalname);
+
     const isImage = /^image\//.test(req.file.mimetype);
     const message = {
       ...createMessageBase({ roomId, sender: { nickname } }),
       type: isImage ? 'image' : 'file',
       file: {
-        originalName: req.file.originalname,
+        originalName: decodedOriginalName,
         storedName: req.file.filename,
         mimeType: req.file.mimetype,
         size: req.file.size,
@@ -296,6 +360,61 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     res.json({ ok: true, message });
   } catch (error) {
     res.status(400).json({ ok: false, message: error.message || '上传失败' });
+  }
+});
+
+/**
+ * 下载文件接口
+ * 支持中文文件名，设置合理的 Content-Disposition
+ * 使用 filename* (RFC 5987) 编码以支持 UTF-8 中文文件名
+ */
+app.get('/api/files/:storedName/download', async (req, res) => {
+  try {
+    const { storedName } = req.params;
+    
+    // 安全检查：只允许文件名中的安全字符
+    if (!/^[\w.\-()]+$/.test(storedName)) {
+      return res.status(400).json({ ok: false, message: '无效的文件名' });
+    }
+
+    const filePath = path.join(UPLOAD_DIR, storedName);
+    
+    // 检查文件是否存在
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ ok: false, message: '文件不存在' });
+    }
+
+    // 尝试从历史消息中找到原始文件名
+    const fileMessage = await findFileMessageByStoredName(storedName);
+    const originalName = fileMessage?.file?.originalName || storedName;
+    const mimeType = fileMessage?.file?.mimeType || mime.lookup(filePath) || 'application/octet-stream';
+
+    // 设置 Content-Type
+    res.setHeader('Content-Type', mimeType);
+
+    // 设置 Content-Disposition 以支持下载时使用原始文件名
+    // 同时提供 filename（ASCII回退）和 filename*（UTF-8）两种方式
+    // filename* 使用 RFC 5987 规范：UTF-8''编码
+    const safeAsciiName = originalName
+      .replace(/[^\x00-\x7F]/g, '_')  // 非ASCII字符替换为下划线
+      .replace(/["\\]/g, '_');        // 去除引号和反斜杠
+    
+    const encodedName = encodeURIComponent(originalName)
+      .replace(/['()]/g, char => `%${char.charCodeAt(0).toString(16)}`);
+
+    res.setHeader('Content-Disposition', 
+      `attachment; filename="${safeAsciiName}"; filename*=UTF-8''${encodedName}`
+    );
+
+    // 设置缓存控制
+    res.setHeader('Cache-Control', 'private, no-cache');
+
+    // 返回文件流
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+  } catch (error) {
+    console.error('[DOWNLOAD ERROR]', error);
+    res.status(500).json({ ok: false, message: '下载失败' });
   }
 });
 

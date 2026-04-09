@@ -199,14 +199,42 @@ function createTextMessageNode(message) {
   return wrapper;
 }
 
+/**
+ * 尝试修复显示文件名中的乱码
+ * 兼容历史消息中已经保存的乱码文件名
+ */
+function fixDisplayFilename(filename) {
+  if (!filename) return '未知文件';
+  
+  // 如果文件名已经包含正常中文，直接返回
+  if (/[\u4e00-\u9fa5]/.test(filename)) {
+    return filename;
+  }
+  
+  // 尝试用 Latin-1 -> UTF-8 解码来修复乱码
+  try {
+    const decoded = Buffer.from(filename, 'latin1').toString('utf8');
+    // 如果解码后包含中文，使用解码结果
+    if (/[\u4e00-\u9fa5]/.test(decoded)) {
+      return decoded;
+    }
+  } catch (e) {
+    // 解码失败，保持原值
+  }
+  
+  return filename;
+}
+
 function createFileMessageNode(message) {
   const isSelf = message.sender?.nickname === state.nickname;
   const wrapper = document.createElement('div');
   wrapper.className = `message-row ${isSelf ? 'self' : 'other'}`;
 
   const isImage = message.type === 'image';
+  // 修复文件名显示（兼容历史乱码）
+  const displayName = fixDisplayFilename(message.file.originalName);
   const previewHtml = isImage
-    ? `<img class="file-preview" src="${message.file.url}" alt="${escapeHtml(message.file.originalName)}" />`
+    ? `<img class="file-preview" src="${message.file.url}" alt="${escapeHtml(displayName)}" />`
     : '';
 
   wrapper.innerHTML = `
@@ -218,18 +246,22 @@ function createFileMessageNode(message) {
       <div class="file-card">
         ${previewHtml}
         <div class="file-meta">
-          <strong>${escapeHtml(message.file.originalName)}</strong>
+          <strong>${escapeHtml(displayName)}</strong>
           <span>${escapeHtml(message.file.mimeType || '未知类型')} · ${formatBytes(message.file.size || 0)}</span>
         </div>
       </div>
       <div class="message-actions">
-        <a class="mini-btn" href="${message.file.url}" download="${escapeHtml(message.file.originalName)}">下载</a>
+        <a class="mini-btn" href="/api/files/${encodeURIComponent(message.file.storedName)}/download" download="${escapeHtml(displayName)}">下载</a>
         <button class="mini-btn copy-link-btn">复制链接</button>
       </div>
     </div>
   `;
 
-  wrapper.querySelector('.copy-link-btn').addEventListener('click', () => copyText(location.origin + message.file.url));
+  // 复制链接改为复制新的下载链接
+  wrapper.querySelector('.copy-link-btn').addEventListener('click', () => {
+    const downloadUrl = `${location.origin}/api/files/${encodeURIComponent(message.file.storedName)}/download`;
+    copyText(downloadUrl);
+  });
   return wrapper;
 }
 
