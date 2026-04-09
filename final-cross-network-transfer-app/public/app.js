@@ -223,29 +223,12 @@ function createTextMessageNode(message) {
 }
 
 /**
- * 尝试修复显示文件名中的乱码
- * 兼容历史消息中已经保存的乱码文件名
+ * 获取文件显示名称
+ * 直接使用服务端返回的 originalName（服务端已处理中文文件名乱码问题）
+ * 前端不做额外处理，避免引入浏览器兼容性风险
  */
-function fixDisplayFilename(filename) {
-  if (!filename) return '未知文件';
-  
-  // 如果文件名已经包含正常中文，直接返回
-  if (/[\u4e00-\u9fa5]/.test(filename)) {
-    return filename;
-  }
-  
-  // 尝试用 Latin-1 -> UTF-8 解码来修复乱码
-  try {
-    const decoded = Buffer.from(filename, 'latin1').toString('utf8');
-    // 如果解码后包含中文，使用解码结果
-    if (/[\u4e00-\u9fa5]/.test(decoded)) {
-      return decoded;
-    }
-  } catch (e) {
-    // 解码失败，保持原值
-  }
-  
-  return filename;
+function getDisplayFilename(message) {
+  return message.file?.originalName || '未知文件';
 }
 
 function createFileMessageNode(message) {
@@ -256,8 +239,7 @@ function createFileMessageNode(message) {
   wrapper.dataset.messageId = message.id;
 
   const isImage = message.type === 'image';
-  // 修复文件名显示（兼容历史乱码）
-  const displayName = fixDisplayFilename(message.file.originalName);
+  const displayName = getDisplayFilename(message);
   const previewHtml = isImage
     ? `<img class="file-preview" src="${message.file.url}" alt="${escapeHtml(displayName)}" />`
     : '';
@@ -276,7 +258,7 @@ function createFileMessageNode(message) {
         </div>
       </div>
       <div class="message-actions">
-        <input type="checkbox" class="file-checkbox" data-id="${message.id}" ${isSelected ? 'checked' : ''} />
+        <input type="checkbox" class="file-checkbox" data-id="${message.id}" data-stored="${escapeHtml(message.file.storedName)}" ${isSelected ? 'checked' : ''} />
         <a class="mini-btn" href="/api/files/${encodeURIComponent(message.file.storedName)}/download" download="${escapeHtml(displayName)}">下载</a>
         <button class="mini-btn copy-link-btn">复制链接</button>
       </div>
@@ -294,7 +276,7 @@ function createFileMessageNode(message) {
     updateSelectionCount();
   });
 
-  // 复制链接改为复制新的下载链接
+  // 复制链接
   wrapper.querySelector('.copy-link-btn').addEventListener('click', () => {
     const downloadUrl = `${location.origin}/api/files/${encodeURIComponent(message.file.storedName)}/download`;
     copyText(downloadUrl);
@@ -459,33 +441,14 @@ async function batchDownloadFiles() {
   setStatus('正在准备批量下载...');
 
   try {
-    // 获取所有选中的消息对应的 storedName
-    const messageNodes = els.messageList.querySelectorAll('.message-row');
-    const storedNames = [];
-
-    for (const node of messageNodes) {
-      const msgId = node.dataset.messageId;
-      if (state.selectedMessages.has(msgId)) {
-        const checkbox = node.querySelector('.file-checkbox');
-        if (checkbox) {
-          storedNames.push(checkbox.dataset.id.replace(/^message_/, ''));
-        }
-      }
-    }
-
-    // 从 DOM 中重新获取 storedName
+    // 从 DOM 中获取选中的文件的 storedName
     const selectedStoredNames = [];
     const checkboxes = els.messageList.querySelectorAll('.file-checkbox:checked');
+    
     checkboxes.forEach(checkbox => {
-      const messageId = checkbox.dataset.id;
-      // 找到对应的消息卡片
-      const row = checkbox.closest('.message-row');
-      const downloadLink = row.querySelector('a[href*="/api/files/"]');
-      if (downloadLink) {
-        const match = downloadLink.href.match(/\/api\/files\/([^/]+)\/download/);
-        if (match) {
-          selectedStoredNames.push(match[1]);
-        }
+      const storedName = checkbox.dataset.stored;
+      if (storedName) {
+        selectedStoredNames.push(storedName);
       }
     });
 
@@ -494,25 +457,43 @@ async function batchDownloadFiles() {
       return;
     }
 
-    // 创建表单提交批量下载请求
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = '/api/files/batch-download';
-    form.style.display = 'none';
+    setStatus(`正在打包 ${selectedStoredNames.length} 个文件...`);
 
-    const input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = 'storedNames';
-    input.value = JSON.stringify(selectedStoredNames);
-    form.appendChild(input);
+    // 使用 fetch 发起 JSON 请求，获取 zip 流
+    const response = await fetch('/api/files/batch-download', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ storedNames: selectedStoredNames })
+    });
 
-    document.body.appendChild(form);
-    form.submit();
-    document.body.removeChild(form);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: '批量下载失败' }));
+      throw new Error(errorData.message || '批量下载失败');
+    }
 
-    setStatus(`已发起 ${selectedStoredNames.length} 个文件的批量下载`, 'success');
+    // 将响应转为 blob
+    const blob = await response.blob();
+
+    // 生成下载文件名
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const downloadFilename = `批量下载_${timestamp}.zip`;
+
+    // 创建下载链接并触发
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = downloadFilename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    setStatus(`${selectedStoredNames.length} 个文件打包下载完成`, 'success');
   } catch (error) {
-    setStatus('批量下载失败', 'error');
+    console.error('批量下载失败:', error);
+    setStatus(error.message || '批量下载失败', 'error');
   }
 }
 
