@@ -1,0 +1,67 @@
+==============================================
+跨网传递项目 - 快速交接摘要
+==============================================
+
+【项目一句话】
+跨网络网页传输工具，通过同一链接实时传递文字/图片/文件。
+
+【当前阶段】
+已上线 + 功能迭代中
+
+【已完成关键步骤】
+1. GitHub 仓库建立 (xyd546/cross-network-transfer-app)
+2. Render Web Service 部署上线
+3. 房间机制、文字/图片/文件传输、邀请链接、在线用户
+4. 健康检查 /api/health
+5. 全局异常处理 + 启动诊断日志
+6. 剪贴板粘贴 (Ctrl+V/Cmd+V)
+7. 可配置文字长度 (MAX_TEXT_LENGTH=20000)
+8. 字数统计 + 超限提示
+9. Ctrl+Enter/Cmd+Enter 发送
+10. .clinerules + _project_memory 记忆机制
+
+【关键路径】
+- 目录: final-cross-network-transfer-app/
+- 服务端: server.js
+- 前端: public/app.js, public/index.html
+- 配置: render.yaml, package.json, .env.example
+- 文档: README.md, 使用说明.txt, docs/
+- 记忆: _project_memory/, .clinerules
+
+【线上入口】
+- GitHub: https://github.com/xyd546/cross-network-transfer-app
+- Render: cross-network-transfer-app (Web Service, PORT=10000)
+- 本地: http://localhost:3000
+
+【运行时存储】
+- 本地: storage/data/*.json, storage/uploads/*
+- 云端: /opt/render/project/src/storage/
+
+【技术栈】
+- Node.js + Express + Socket.IO + Multer
+- Node: >=18 <=22 (推荐 20 LTS)
+- 端口: 本地 3000, Render 10000
+
+【当前主要问题】
+1. feature/clipboard-paste-and-text-limit 分支待合并
+2. Free 实例 90 天后需登录
+
+【下一步要做的 5 件事】
+1. 合并 feature/clipboard-paste-and-text-limit 到 main
+2. 在 Render 上验证新功能
+3. 测试剪贴板粘贴图片
+4. 测试剪贴板粘贴文字
+5. 测试字数统计和超限提示
+
+【新会话启动方式】
+请先读取：
+- _project_memory/project_status.md
+- _project_memory/project_status.txt
+- _project_memory/error_memory.md
+- .clinerules
+
+然后交叉检查 server.js, public/app.js, public/index.html, render.yaml, README.md
+
+==============================================
+更新时间: 2026-04-09
+==============================================
