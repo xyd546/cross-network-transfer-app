@@ -7,7 +7,7 @@
 在不同网络、不同电脑之间，通过同一个浏览器网页链接，实时传递文字、图片和普通文件的工具。
 
 ## 当前目标
-已完成基础功能开发和部署，当前处于功能迭代阶段，正在完善多文件上传和批量下载功能。
+已完成基础功能开发和部署，当前处于功能迭代阶段，正在验证多文件上传和批量下载功能。
 
 ## 当前所处阶段
 - **已上线阶段**：基础功能已完成并部署到 Render
@@ -35,9 +35,10 @@
 - [x] Node 20 LTS 兼容性优化
 - [x] `.clinerules` 工程规则建立
 - [x] `_project_memory` 记忆机制建立
-- [x] **多文件上传支持**（一次选择/拖拽多个文件）
-- [x] **批量下载功能**（勾选多个文件后一键打包下载）
-- [x] **中文文件名支持**（上传和下载自动处理编码）
+- [x] **多文件上传支持**（一次选择/拖拽多个文件，最多20个）
+- [x] **批量下载功能**（勾选多个文件后一键打包下载为 zip）
+- [x] **中文文件名支持**（服务端 Buffer latin1->utf8 反向解码）
+- [x] **前端文件名显示优化**（直接使用服务端 originalName，不依赖浏览器 Buffer）
 
 ## 关键里程碑
 
@@ -49,6 +50,7 @@
 | 2026-04 | 剪贴板粘贴功能 | 完成 |
 | 2026-04 | 文字长度可配置化 | 完成 |
 | 2026-04 | 多文件上传和批量下载 | 完成（feature 分支已推送） |
+| 2026-04 | 批量下载修复（fetch+JSON） | 完成 |
 
 ## 当前工程关键目录说明
 
@@ -100,15 +102,15 @@ final-cross-network-transfer-app/
 | Ctrl+Enter 发送 | ✅ 已完成 | 支持 Mac/Windows |
 | MAX_TEXT_LENGTH 配置 | ✅ 已完成 | 默认 20000 |
 | **多文件上传** | ✅ 已完成 | 支持一次选择/拖拽多个文件 |
-| **批量下载** | ✅ 已完成 | 勾选文件后打包zip下载 |
-| **中文文件名** | ✅ 已完成 | Buffer latin1->utf8 反向解码 |
+| **批量下载** | ✅ 已完成 | 勾选文件后打包zip下载（fetch+JSON） |
+| **中文文件名** | ✅ 已完成 | 服务端 Buffer latin1->utf8 反向解码 |
 
 ## 当前配置/部署状态
 
 ### GitHub 状态
 - 仓库：https://github.com/xyd546/cross-network-transfer-app
 - 分支：`main`（稳定）、`feature/clipboard-paste-and-text-limit`（最新功能）
-- 最新提交：`486a3cb feat: support multi-file upload and batch download`
+- 最新提交：`37cdcb8 fix: use fetch+JSON for batch download, remove browser Buffer usage`
 - 已配置 auto-deploy
 
 ### Render 状态
@@ -133,18 +135,21 @@ MAX_TEXT_LENGTH=20000
 
 | 接口 | 方法 | 说明 |
 |------|------|------|
-| `/api/upload/multiple` | POST | 多文件上传，最多20个文件 |
-| `/api/files/batch-download` | POST | 批量下载，限制50个文件，打包zip |
+| `/api/upload/multiple` | POST | 多文件上传，最多20个文件，FormData |
+| `/api/files/batch-download` | POST | 批量下载，限制50个文件，返回 zip 流（JSON 请求体） |
+| `/api/files/:storedName/download` | GET | 单文件下载，支持中文文件名 |
 
 ## 已解决问题
 
-| 问题 | 根因 | 解决方法 |
-|------|------|----------|
-| Render early exit | 缺少 PORT 环境变量 + Node 版本问题 | 添加 PORT=10000 + nodeVersion=20 |
-| 静默退出无日志 | 缺少全局异常处理 | 添加 uncaughtException/unhandledRejection 处理 |
-| 文字静默截断 | normalizeText 直接 slice(0,4000) | 改为超限返回错误 |
-| 单文件限制 | multer 配置 files:1, upload.single() | 改为 files:20, upload.array() |
-| 中文文件名乱码 | 上传时 latin1 被错误解读 | Buffer.from(original, 'latin1').toString('utf8') |
+| 问题 | 根因 | 解决方法 | 提交 |
+|------|------|----------|------|
+| Render early exit | 缺少 PORT 环境变量 + Node 版本问题 | 添加 PORT=10000 + nodeVersion=20 | 初始提交 |
+| 静默退出无日志 | 缺少全局异常处理 | 添加 uncaughtException/unhandledRejection 处理 | 初始提交 |
+| 文字静默截断 | normalizeText 直接 slice(0,4000) | 改为超限返回错误 | feature 分支 |
+| 单文件限制 | multer 配置 files:1, upload.single() | 改为 files:20, upload.array() | 486a3cb |
+| 中文文件名乱码 | 上传时 latin1 被错误解读 | 服务端 Buffer.from latin1->utf8 解码 | 486a3cb |
+| **浏览器端 Buffer 不稳** | 前端使用 Buffer.from 在浏览器中不稳定 | 前端直接用服务端 originalName，删除冒险逻辑 | 37cdcb8 |
+| **批量下载格式不匹配** | form.submit() vs express.json() | 改用 fetch + JSON + blob 流下载 | 37cdcb8 |
 
 ## 已知问题/风险点
 
@@ -186,4 +191,5 @@ MAX_TEXT_LENGTH=20000
 | 2026-04-09 | 创建记忆文件 | 建立 .clinerules, _project_memory |
 | 2026-04-09 | 状态核对 | 确认所有新功能已实现 |
 | 2026-04-09 | 功能迭代 | 实现多文件上传和批量下载 |
+| 2026-04-09 | 修复批量下载 | 改用 fetch+JSON，移除浏览器 Buffer |
 | 2026-04-09 | Git push | 推送 feature/clipboard-paste-and-text-limit 分支 |

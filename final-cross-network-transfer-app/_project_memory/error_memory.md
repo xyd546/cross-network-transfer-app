@@ -221,7 +221,19 @@ Render 显示 Health Check 失败，服务状态异常。
 服务端使用反向解码恢复原始中文：
 ```javascript
 // 恢复被错误解读的中文文件名
-const original = Buffer.from(file.originalname, 'latin1').toString('utf8');
+function decodeUploadedFilename(name) {
+  const original = String(name);
+  if (/[\u4e00-\u9fa5]/.test(original)) {
+    return original;  // 已有中文，保持原样
+  }
+  try {
+    const decoded = Buffer.from(original, 'latin1').toString('utf8');
+    if (/[\u4e00-\u9fa5]/.test(decoded)) {
+      return decoded;  // 解码后有中文，使用解码结果
+    }
+  } catch (e) {}
+  return original;
+}
 ```
 
 ### 以后如何避免
@@ -246,9 +258,8 @@ const original = Buffer.from(file.originalname, 'latin1').toString('utf8');
    ```javascript
    const archiver = require('archiver');
    app.post('/api/files/batch-download', (req, res) => {
-     const { storedNames } = req.body;
+     const { storedNames } = req.body;  // JSON 格式
      const archive = archiver('zip');
-     // 添加文件到 archive
      archive.pipe(res);
      storedNames.forEach(name => {
        archive.file(filePath, { name: originalName });
@@ -256,10 +267,16 @@ const original = Buffer.from(file.originalname, 'latin1').toString('utf8');
      archive.finalize();
    });
    ```
-2. 前端：
-   - 文件消息卡片添加 checkbox 复选框
-   - 维护选中文件 Set
-   - 批量下载按钮 POST 到接口获取 zip
+2. 前端使用 fetch + JSON + blob 流：
+   ```javascript
+   const response = await fetch('/api/files/batch-download', {
+     method: 'POST',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify({ storedNames })
+   });
+   const blob = await response.blob();
+   // 创建下载链接
+   ```
 
 ### 以后如何避免
 - 评估用户常见操作场景
@@ -270,7 +287,68 @@ const original = Buffer.from(file.originalname, 'latin1').toString('utf8');
 
 ---
 
-## 10. 错误记忆模板
+## 10. 浏览器端 Buffer 不稳定
+
+### 现象
+前端使用 `Buffer.from(filename, 'latin1').toString('utf8')` 修复文件名乱码，在某些浏览器中可能报错或行为不一致。
+
+### 根因
+`Buffer` 是 Node.js 的 API，虽然现代浏览器支持，但行为可能不一致。
+
+### 正确处理方式
+- **前端**：不要做任何文件名修复，直接使用服务端返回的 `originalName`
+- **服务端**：负责处理所有文件名编码问题，前端只需信任服务端数据
+- 前端文件显示函数：
+  ```javascript
+  function getDisplayFilename(message) {
+    return message.file?.originalName || '未知文件';
+  }
+  ```
+
+### 以后如何避免
+- 文件名编码问题统一在服务端处理
+- 前端只做简单的数据展示，不做冒险的编码转换
+
+### 当前状态
+✅ 已解决
+
+---
+
+## 11. 批量下载请求格式不匹配
+
+### 现象
+前端用 `form.submit()` 提交表单数据，服务端用 `express.json()` 读取 JSON，导致请求失败。
+
+### 根因
+表单提交是 `application/x-www-form-urlencoded`，而服务端期望 `application/json`。
+
+### 正确处理方式
+使用 **fetch + JSON + blob 流**：
+```javascript
+// 前端
+const response = await fetch('/api/files/batch-download', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ storedNames })
+});
+const blob = await response.blob();
+const url = URL.createObjectURL(blob);
+const a = document.createElement('a');
+a.href = url;
+a.download = 'download.zip';
+a.click();
+```
+
+### 以后如何避免
+- API 接口统一使用 JSON 格式
+- 前端用 fetch 而非 form.submit
+
+### 当前状态
+✅ 已解决
+
+---
+
+## 12. 错误记忆模板
 
 如果遇到新错误，按以下格式记录：
 

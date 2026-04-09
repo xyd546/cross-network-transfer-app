@@ -6,7 +6,7 @@
 跨网络网页传输工具，通过同一链接实时传递文字/图片/文件。
 
 【当前阶段】
-已上线 + 功能迭代中（多文件上传和批量下载已完成）
+已上线 + 功能迭代中（多文件上传和批量下载已完成并推送）
 
 【已完成关键步骤】
 1. GitHub 仓库建立 (xyd546/cross-network-transfer-app)
@@ -19,9 +19,10 @@
 8. 字数统计 + 超限提示
 9. Ctrl+Enter/Cmd+Enter 发送
 10. .clinerules + _project_memory 记忆机制
-11. **多文件上传**（最多20个文件）
-12. **批量下载**（勾选文件打包zip）
-13. **中文文件名支持**（Buffer latin1->utf8 解码）
+11. **多文件上传**（最多20个文件，FormData）
+12. **批量下载**（勾选文件打包zip，fetch+JSON）
+13. **中文文件名支持**（服务端 Buffer latin1->utf8 解码）
+14. **前端文件名显示**（直接用服务端 originalName）
 
 【关键路径】
 - 目录: final-cross-network-transfer-app/
@@ -32,8 +33,9 @@
 - 记忆: _project_memory/, .clinerules
 
 【新增 API】
-- POST /api/upload/multiple - 多文件上传
-- POST /api/files/batch-download - 批量下载zip
+- POST /api/upload/multiple - 多文件上传（FormData）
+- POST /api/files/batch-download - 批量下载zip（JSON 请求体）
+- GET /api/files/:storedName/download - 单文件下载（中文文件名）
 
 【线上入口】
 - GitHub: https://github.com/xyd546/cross-network-transfer-app
@@ -49,13 +51,18 @@
 - Node: >=18 <=22 (推荐 20 LTS)
 - 端口: 本地 3000, Render 10000
 
+【Git 分支状态】
+- main: 稳定分支
+- feature/clipboard-paste-and-text-limit: 最新功能分支
+- 最新提交: 37cdcb8
+
 【当前主要问题】
-1. feature 分支待合并到 main（最新提交: 486a3cb）
+1. feature 分支待合并到 main
 
 【下一步要做的 5 件事】
 1. 合并 feature/clipboard-paste-and-text-limit 到 main
 2. 在 Render 上验证多文件上传
-3. 在 Render 上验证批量下载
+3. 在 Render 上验证批量下载（fetch+JSON 方式）
 4. 用中文文件名测试上传下载
 5. 测试批量下载打包zip
 
