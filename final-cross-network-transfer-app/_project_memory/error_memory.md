@@ -172,7 +172,105 @@ Render 显示 Health Check 失败，服务状态异常。
 
 ---
 
-## 7. 错误记忆模板
+## 7. 单文件上传限制
+
+### 现象
+无法一次上传多个文件，每次只能上传一个。
+
+### 根因
+1. multer 配置 `limits.files: 1` 限制了最多1个文件
+2. 使用 `upload.single('file')` 只接收单个文件
+3. 前端 `state.selectedFile` 是单个值而非数组
+4. file input change 事件只取 `files[0]`
+
+### 正确处理方式
+1. 后端：
+   ```javascript
+   const upload = multer({
+     storage,
+     limits: { files: 20, fileSize: MAX_FILE_SIZE }
+   });
+   // 多文件上传路由
+   app.post('/api/upload/multiple', upload.array('files', 20), (req, res) => {
+     // 处理多个文件
+   });
+   ```
+2. 前端：
+   - `state.selectedFiles` 改为数组
+   - file input 添加 `multiple` 属性
+   - 拖拽处理 `files` 数组
+
+### 以后如何避免
+- 明确业务需求是单文件还是多文件
+- 多文件使用 `upload.array()` 而非 `upload.single()`
+
+### 当前状态
+✅ 已解决
+
+---
+
+## 8. 中文文件名乱码
+
+### 现象
+上传中文文件名的文件后，下载时文件名变成乱码。
+
+### 根因
+某些 HTTP 客户端或浏览器在上传文件时，将 UTF-8 编码的中文文件名错误地按 Latin-1 解读。
+
+### 正确处理方式
+服务端使用反向解码恢复原始中文：
+```javascript
+// 恢复被错误解读的中文文件名
+const original = Buffer.from(file.originalname, 'latin1').toString('utf8');
+```
+
+### 以后如何避免
+- 文件名处理时考虑编码问题
+- 下载时使用 RFC 5987 `filename*` 编码支持中文
+
+### 当前状态
+✅ 已解决
+
+---
+
+## 9. 批量下载未实现
+
+### 现象
+需要下载多个文件时，只能逐个下载，很不方便。
+
+### 根因
+没有批量下载功能接口。
+
+### 正确处理方式
+1. 后端使用 archiver 库打包：
+   ```javascript
+   const archiver = require('archiver');
+   app.post('/api/files/batch-download', (req, res) => {
+     const { storedNames } = req.body;
+     const archive = archiver('zip');
+     // 添加文件到 archive
+     archive.pipe(res);
+     storedNames.forEach(name => {
+       archive.file(filePath, { name: originalName });
+     });
+     archive.finalize();
+   });
+   ```
+2. 前端：
+   - 文件消息卡片添加 checkbox 复选框
+   - 维护选中文件 Set
+   - 批量下载按钮 POST 到接口获取 zip
+
+### 以后如何避免
+- 评估用户常见操作场景
+- 提供便捷的批量操作功能
+
+### 当前状态
+✅ 已解决
+
+---
+
+## 10. 错误记忆模板
 
 如果遇到新错误，按以下格式记录：
 

@@ -6,7 +6,7 @@
 跨网络网页传输工具，通过同一链接实时传递文字/图片/文件。
 
 【当前阶段】
-已上线 + 功能迭代中
+已上线 + 功能迭代中（多文件上传和批量下载已完成）
 
 【已完成关键步骤】
 1. GitHub 仓库建立 (xyd546/cross-network-transfer-app)
@@ -19,6 +19,9 @@
 8. 字数统计 + 超限提示
 9. Ctrl+Enter/Cmd+Enter 发送
 10. .clinerules + _project_memory 记忆机制
+11. **多文件上传**（最多20个文件）
+12. **批量下载**（勾选文件打包zip）
+13. **中文文件名支持**（Buffer latin1->utf8 解码）
 
 【关键路径】
 - 目录: final-cross-network-transfer-app/
@@ -27,6 +30,10 @@
 - 配置: render.yaml, package.json, .env.example
 - 文档: README.md, 使用说明.txt, docs/
 - 记忆: _project_memory/, .clinerules
+
+【新增 API】
+- POST /api/upload/multiple - 多文件上传
+- POST /api/files/batch-download - 批量下载zip
 
 【线上入口】
 - GitHub: https://github.com/xyd546/cross-network-transfer-app
@@ -38,20 +45,19 @@
 - 云端: /opt/render/project/src/storage/
 
 【技术栈】
-- Node.js + Express + Socket.IO + Multer
+- Node.js + Express + Socket.IO + Multer + archiver
 - Node: >=18 <=22 (推荐 20 LTS)
 - 端口: 本地 3000, Render 10000
 
 【当前主要问题】
-1. feature/clipboard-paste-and-text-limit 分支待合并
-2. Free 实例 90 天后需登录
+1. feature 分支待合并到 main（最新提交: 486a3cb）
 
 【下一步要做的 5 件事】
 1. 合并 feature/clipboard-paste-and-text-limit 到 main
-2. 在 Render 上验证新功能
-3. 测试剪贴板粘贴图片
-4. 测试剪贴板粘贴文字
-5. 测试字数统计和超限提示
+2. 在 Render 上验证多文件上传
+3. 在 Render 上验证批量下载
+4. 用中文文件名测试上传下载
+5. 测试批量下载打包zip
 
 【新会话启动方式】
 请先读取：
